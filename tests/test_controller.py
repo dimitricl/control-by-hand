@@ -94,8 +94,13 @@ class TestEdgeBleed(Base):
         """Régression (debug.log) : décalage vertical après une pause => curseur bloqué à mi-hauteur."""
         self.feed(state(anchor=(0.5, 0.75)), 3)
         self.c.off_y = -500
-        for i in range(60):                       # la main descend de 0.75 à 0.99 (sort de la zone en bas)
-            self.feed(state(anchor=(0.5, 0.75 + 0.004 * (i + 1))), 1)
+        for _ in range(2):                        # deux poussées : la main sort par le bas (0.75 -> 0.92), revient
+            for i in range(30):
+                self.feed(state(anchor=(0.5, 0.75 + 0.17 * (i + 1) / 30)), 1)
+            for i in range(30):
+                self.feed(state(anchor=(0.5, 0.92 - 0.17 * (i + 1) / 30)), 1)
+        for i in range(30):
+            self.feed(state(anchor=(0.5, 0.75 + 0.17 * (i + 1) / 30)), 1)
         self.assertGreater(self.m.pos[1], self.m.h - 5)
 
     def test_stationary_hand_at_edge_does_not_drift(self):
@@ -113,6 +118,18 @@ class TestEdgeBleed(Base):
         self.c.off_y = -100
         self.feed(OPEN, 30)
         self.assertAlmostEqual(self.c.off_y, -100, places=3)
+
+
+class TestScrollEntryDoesNotMoveCursor(Base):
+    def test_hand_drop_while_forming_scroll(self):
+        """Régression (debug.log) : la main descend en formant le geste de scroll => le curseur sautait."""
+        self.feed(state(anchor=(0.5, 0.70)), 15)
+        start = self.m.pos[1]
+        for i in range(8):                                  # la main descend, sort de la zone par le bas
+            self.feed(state(anchor=(0.5, 0.70 + 0.03 * (i + 1))), 1)
+        self.feed(replace(TWO, anchor=(0.5, 0.95)), 2)
+        self.assertEqual(self.c.status, "SCROLL")
+        self.assertAlmostEqual(self.m.pos[1], start, delta=60)
 
 
 class TestFist(Base):

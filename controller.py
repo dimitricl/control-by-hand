@@ -34,7 +34,8 @@ class ControlConfig:
     thumb_frames: int = 3
     rewind: float = 0.08              # s : on revient à la position d'avant le geste
     lost_after: float = 0.4           # s sans main avant de tout relâcher
-    edge_gain: float = 3.0            # main qui sort de la zone : le curseur avance edge_gain x plus vite vers le bord
+    edge_gain: float = 2.0            # main qui sort de la zone : le curseur avance en plus de edge_gain x le mouvement
+    scroll_rewind: float = 0.3        # s : à l'entrée du scroll, le curseur revient à sa position d'avant le geste
     edge_noise: float = 0.002         # mouvement (fraction de zone/image) ignoré : bruit de détection
 
     @classmethod
@@ -72,9 +73,9 @@ class GestureController:
                 return x, y
         return (self.hist[0][1], self.hist[0][2]) if self.hist else None
 
-    def _rewind(self, t, dt):
+    def _rewind(self, t, dt, limit=60):
         r, m = self._past(t, dt), self.mouse
-        if r and m.pos and abs(r[0] - m.pos[0]) + abs(r[1] - m.pos[1]) < 60:
+        if r and m.pos and abs(r[0] - m.pos[0]) + abs(r[1] - m.pos[1]) < limit:
             m.snap(*r)
 
     def _reset_filters(self):
@@ -150,6 +151,8 @@ class GestureController:
             self.scroll_on = self.scroll_miss <= a.scroll_miss_max and self.scroll_open < a.scroll_open_frames
         elif s.two_fingers and not raw_l:
             self.scroll_on, self.scroll_miss, self.scroll_open = True, 0, 0
+            # la main bouge en formant le geste : on annule ce déplacement parasite du curseur
+            self._rewind(t, a.scroll_rewind, limit=2000)
         if not self.scroll_on:
             self.last_scroll_y = None
         if self.prev_scroll and not self.scroll_on:
@@ -162,7 +165,8 @@ class GestureController:
         elif self.scroll_on:
             self._scroll(t, s)
         else:
-            self._cursor(t, s, fist_like, pending, raw_l)
+            forming = s.index_ext and s.middle_ext and not s.open_hand     # geste de scroll en formation
+            self._cursor(t, s, fist_like, pending or forming, raw_l, bleed=not forming)
 
     # --- états ---
     def _pause(self, t, s):
@@ -209,7 +213,7 @@ class GestureController:
             return off - min((-delta - noise) * k, pos)
         return off
 
-    def _cursor(self, t, s, fist_like, pending, raw_l):
+    def _cursor(self, t, s, fist_like, pending, raw_l, bleed=True):
         a, m = self.cfg, self.mouse
         z0x, z0y, z1x, z1y = a.zone
         self.status = "CURSEUR"
@@ -225,7 +229,7 @@ class GestureController:
         # Main qui SORT de la zone : le décalage laissé par une pause pourrait empêcher d'atteindre
         # le bord de l'écran (curseur bloqué à mi-hauteur). On le résorbe, mais seulement en
         # proportion du mouvement vers l'extérieur : une main immobile ne fait pas glisser le curseur.
-        if self._prev_f is not None:
+        if bleed and self._prev_f is not None:
             self.off_x = self._bleed(fnx, fnx - self._prev_f[0], rx + self.off_x, self.off_x, m.w - 1, m.w)
             self.off_y = self._bleed(fny, fny - self._prev_f[1], ry + self.off_y, self.off_y, m.h - 1, m.h)
         self._prev_f = (fnx, fny)
