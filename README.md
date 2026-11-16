@@ -14,6 +14,10 @@ Permissions macOS (Réglages Système > Confidentialité et sécurité) pour le 
     python3 main.py               # gestes : voir l'en-tête de main.py
     python3 calibrate.py          # produit calibration.json (chargé automatiquement)
 
+Coupe-circuit : **Ctrl+Option+Cmd+Espace** (global) ou **Espace** dans l'aperçu active/désactive le
+contrôle ; le bouton est relâché à la désactivation. Le raccourci global demande « Surveillance de
+l'entrée » pour le Terminal. Un clic maintenu plus de 60 s est relâché automatiquement.
+
 Arrêt : `q` / Échap dans l'aperçu, ou Ctrl+C.
 
 ## Tests

@@ -9,6 +9,7 @@ Gestes (main droite ou gauche) :
   - Poing fermé                 -> pause : repositionne ta main au centre, rouvre-la, le curseur
                                    repart d'où il était (comme soulever une souris)
   - Main hors caméra            -> pause automatique
+Coupe-circuit : Ctrl+Option+Cmd+Espace (global) ou Espace dans l'aperçu = active/désactive.
 Aperçu : q/Échap quitte ; 1/2 = plus/moins de lissage ; 3/4 = moins/plus de réactivité.
 """
 import argparse
@@ -23,6 +24,7 @@ import cv2
 import mediapipe as mp
 
 from camera import LatestFrame
+import killswitch
 from gestures import Hysteresis, analyze
 from mouse import Mouse
 from one_euro import OneEuro
@@ -119,6 +121,13 @@ def main():
         hist.clear()
         fx.reset(); fy.reset()
 
+    def toggle():
+        mouse.set_enabled(not mouse.enabled)
+        print("Contrôle ACTIVÉ" if mouse.enabled else "Contrôle DÉSACTIVÉ (coupe-circuit)")
+
+    if not killswitch.start(toggle):
+        print("Raccourci global indisponible (autorise « Surveillance de l'entrée » pour le Terminal) ; "
+              "utilise Espace dans l'aperçu ou Ctrl+C.")
     print("Prêt. Ctrl+C ou q pour quitter." + ("  [DRY-RUN]" if a.dry_run else ""))
     try:
         while True:
@@ -128,10 +137,15 @@ def main():
             frame = cv2.flip(frame, 1)  # effet miroir : droite = droite
             rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
             rgb.flags.writeable = False
-            res = hands.process(rgb)
+            res = hands.process(rgb) if mouse.enabled else None
 
             edge_warn, thumb_dbg = False, None
-            if not res.multi_hand_landmarks:
+            if not mouse.enabled:
+                if hand_present:
+                    lose_hand()
+                    hand_present = False
+                status = "DESACTIVE (Ctrl+Opt+Cmd+Espace)"
+            elif not res.multi_hand_landmarks:
                 if hand_present and t - last_seen > 0.4:
                     lose_hand()
                     hand_present = False
@@ -274,6 +288,8 @@ def main():
                 k = cv2.waitKey(1) & 0xFF
                 if k in (ord("q"), 27):
                     break
+                if k == ord(" "):
+                    toggle()
                 # réglage en direct : 1/2 = plus/moins de lissage, 3/4 = moins/plus de réactivité
                 if k == ord("1"): fx.min_cutoff = fy.min_cutoff = max(0.3, fx.min_cutoff / 1.15)
                 if k == ord("2"): fx.min_cutoff = fy.min_cutoff = fx.min_cutoff * 1.15
