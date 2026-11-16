@@ -62,7 +62,7 @@ def debug_line(t, mouse, ctl, res):
     lw, lh = screen_size()
     lm = res.multi_hand_landmarks[0].landmark if res is not None and res.multi_hand_landmarks else None
     hand = f"mcp5=({lm[5].x:.3f},{lm[5].y:.3f}) mcp9=({lm[9].x:.3f},{lm[9].y:.3f})" if lm else "mains=0"
-    d = " ".join(f"{k}={v:.1f}" if abs(v) >= 10 else f"{k}={v:.3f}" for k, v in ctl.dbg.items())
+    d = " ".join(f"{k}={v:.1f}" if abs(v) >= 10 else f"{k}={v:g}" if isinstance(v, int) else f"{k}={v:.3f}" for k, v in ctl.dbg.items())
     pos = f"({mouse.pos[0]:.1f},{mouse.pos[1]:.1f})" if mouse.pos else "None"
     tgt = f"({mouse.target[0]:.1f},{mouse.target[1]:.1f})" if mouse.target else "None"
     return (f"{t:.3f} [{ctl.status}] {hand} {d} pos={pos} target={tgt} drag={int(mouse.dragging)} "

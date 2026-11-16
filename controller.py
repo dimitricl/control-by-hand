@@ -109,7 +109,8 @@ class GestureController:
         a, m = self.cfg, self.mouse
         self.thumb_dbg = None
         self.hand_present, self.last_seen = True, t
-        self.dbg = {}
+        self.dbg = {"ie": int(s.index_ext), "me": int(s.middle_ext), "oh": int(s.open_hand),
+                    "two": int(s.two_fingers), "curl": s.curl_max}
 
         # poing : hystérésis + confirmation ; il a priorité sur les clics
         fist_like = s.curl_max < (a.fist_off if self.fist else a.fist_on)
@@ -187,6 +188,8 @@ class GestureController:
         self.scroll_acc += v * (t - self.scroll_t); self.scroll_t = t
         whole = int(self.scroll_acc); self.scroll_acc -= whole
         self.mouse.scroll(whole)
+        self.dbg.update({"y": y, "y0": self.last_scroll_y, "d": d, "v": v, "whole": whole,
+                         "miss": self.scroll_miss})
 
     @staticmethod
     def _bleed(n, pos, off, maxpos, step):
