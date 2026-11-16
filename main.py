@@ -22,46 +22,10 @@ import time
 import cv2
 import mediapipe as mp
 
+from camera import LatestFrame
 from gestures import Hysteresis, analyze
 from mouse import Mouse
 from one_euro import OneEuro
-
-
-class LatestFrame:
-    """Lit la caméra dans un thread et ne garde que la dernière image
-    (évite l'accumulation de retard dans le buffer)."""
-
-    def __init__(self, index, width, height, fps):
-        self.cap = cv2.VideoCapture(index, cv2.CAP_AVFOUNDATION)
-        self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
-        self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
-        self.cap.set(cv2.CAP_PROP_FPS, fps)
-        self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
-        if not self.cap.isOpened():
-            raise SystemExit("Caméra inaccessible. Autorise la caméra pour ton Terminal dans "
-                             "Réglages Système > Confidentialité et sécurité > Caméra.")
-        self.frame, self.stamp, self._seen, self.ts = None, 0, 0, 0.0
-        self._cv = threading.Condition()
-        self._running = True
-        threading.Thread(target=self._run, daemon=True).start()
-
-    def _run(self):
-        while self._running:
-            ok, f = self.cap.read()
-            if ok:
-                with self._cv:
-                    self.frame, self.stamp, self.ts = f, self.stamp + 1, time.perf_counter()
-                    self._cv.notify_all()
-
-    def read(self, timeout=1.0):
-        with self._cv:
-            self._cv.wait_for(lambda: self.stamp != self._seen, timeout)
-            self._seen = self.stamp
-            return self.frame, self.ts
-
-    def close(self):
-        self._running = False
-        self.cap.release()
 
 
 def main():
@@ -84,7 +48,6 @@ def main():
     p.add_argument("--drag-px", type=float, default=30, help="le curseur reste figé tant qu'on pince et qu'on bouge moins que ça")
     p.add_argument("--scroll-speed", type=float, default=14000, help="px/s par unité d'écart de la main")
     p.add_argument("--scroll-dead", type=float, default=0.03, help="zone morte autour du point de départ")
-    p.add_argument("--scroll-gain-unused", type=float, default=0)
     p.add_argument("--fist-on", type=float, default=1.35, help="courbure sous laquelle la main est un poing")
     p.add_argument("--fist-off", type=float, default=1.65, help="courbure au-dessus de laquelle le poing s'ouvre")
     p.add_argument("--fast", action="store_true", help="modèle MediaPipe léger : moins de latence, un peu moins précis")
@@ -93,10 +56,14 @@ def main():
     # calibration.json (produit par calibrate.py) remplace les valeurs par défaut
     cal_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "calibration.json")
     if os.path.exists(cal_path):
-        cal = json.load(open(cal_path))
-        p.set_defaults(**{k: v for k, v in cal.items() if k in ("pinch_on", "pinch_off", "thumb_on", "thumb_off", "fist_on",
-                                                                  "fist_off", "min_cutoff", "beta")})
-        print(f"Calibration chargée : {cal}")
+        try:
+            with open(cal_path) as f:
+                cal = json.load(f)
+            keys = ("pinch_on", "pinch_off", "thumb_on", "thumb_off", "fist_on", "fist_off", "min_cutoff", "beta")
+            p.set_defaults(**{k: float(v) for k, v in cal.items() if k in keys})
+            print(f"Calibration chargée : {cal}")
+        except (OSError, ValueError, TypeError, AttributeError) as e:
+            print(f"Calibration ignorée ({cal_path} illisible : {e}) ; valeurs par défaut utilisées.")
     a = p.parse_args()
 
     cam = LatestFrame(a.camera, a.width, a.height, a.fps)

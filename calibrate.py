@@ -13,7 +13,7 @@ import mediapipe as mp
 import numpy as np
 
 from gestures import analyze
-from main import LatestFrame
+from camera import LatestFrame
 
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "calibration.json")
 PHASES = [
