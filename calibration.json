@@ -1,0 +1,10 @@
+{
+  "pinch_on": 0.35,
+  "pinch_off": 0.58,
+  "thumb_on": 0.85,
+  "thumb_off": 0.65,
+  "fist_on": 0.82,
+  "fist_off": 1.0,
+  "min_cutoff": 1.0,
+  "beta": 15.0
+}
