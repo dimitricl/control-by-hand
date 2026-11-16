@@ -89,6 +89,22 @@ class TestCursorAndClick(Base):
         self.assertEqual(self.m.pos, before)
 
 
+class TestEdgeBleed(Base):
+    def test_cursor_reaches_bottom_after_offset(self):
+        """Régression (debug.log) : décalage vertical après une pause + main au bas de la zone."""
+        self.feed(OPEN, 3)
+        self.c.off_y = -500                       # curseur bloqué à mi-hauteur
+        low = state(anchor=(0.5, 0.9))            # sous la zone (y > 0.80) => ny = 1
+        self.feed(low, 90)
+        self.assertGreater(self.m.pos[1], self.m.h - 5)
+
+    def test_cursor_unchanged_inside_zone(self):
+        self.feed(OPEN, 3)
+        self.c.off_y = -100
+        self.feed(OPEN, 30)                       # main au centre : le décalage est conservé
+        self.assertAlmostEqual(self.c.off_y, -100, places=3)
+
+
 class TestFist(Base):
     def test_fist_pauses_and_cancels_drag(self):
         self.feed(OPEN, 3); self.feed(PINCH, 4)

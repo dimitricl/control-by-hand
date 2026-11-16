@@ -33,6 +33,7 @@ class ControlConfig:
     thumb_frames: int = 3
     rewind: float = 0.08              # s : on revient à la position d'avant le geste
     lost_after: float = 0.4           # s sans main avant de tout relâcher
+    edge_push: float = 800            # px/s : main au bord de la zone => le curseur rejoint le bord de l'écran
 
     @classmethod
     def from_namespace(cls, ns):
@@ -57,6 +58,7 @@ class GestureController:
         self.down_pos, self.drag_started = None, False
         self.off_x = self.off_y = 0.0               # décalage : le curseur reprend où il était
         self.need_rebase = self.prev_scroll = False
+        self._cursor_t = None
         self.last_scroll_y, self.scroll_acc, self.scroll_t = None, 0.0, 0.0
         self.scroll_on, self.scroll_miss = False, 0
 
@@ -186,6 +188,15 @@ class GestureController:
         whole = int(self.scroll_acc); self.scroll_acc -= whole
         self.mouse.scroll(whole)
 
+    @staticmethod
+    def _bleed(n, pos, off, maxpos, step):
+        """Si la main est au bord (n = 0 ou 1) mais pas le curseur, rapproche celui-ci du bord."""
+        if n >= 1 and pos < maxpos:
+            return off + min(step, maxpos - pos)
+        if n <= 0 and pos > 0:
+            return off - min(step, pos)
+        return off
+
     def _cursor(self, t, s, fist_like, pending, raw_l):
         a, m = self.cfg, self.mouse
         z0x, z0y, z1x, z1y = a.zone
@@ -198,6 +209,14 @@ class GestureController:
             self.off_x, self.off_y = m.pos[0] - rx, m.pos[1] - ry
             self.need_rebase = False
             self.hist.clear()
+        # Main au bord de la zone : le décalage laissé par une pause pourrait empêcher d'atteindre
+        # le bord de l'écran (le curseur resterait bloqué à mi-hauteur). On le résorbe doucement.
+        dt = min(t - self._cursor_t, 0.1) if self._cursor_t is not None else 0.0
+        self._cursor_t = t
+        step = a.edge_push * dt
+        if step:
+            self.off_x = self._bleed(nx, rx + self.off_x, self.off_x, m.w - 1, step)
+            self.off_y = self._bleed(ny, ry + self.off_y, self.off_y, m.h - 1, step)
         px = min(max(rx + self.off_x, 0), m.w - 1)
         py = min(max(ry + self.off_y, 0), m.h - 1)
         self.off_x, self.off_y = px - rx, py - ry    # contre le bord, le décalage suit : pas de zone morte
