@@ -24,7 +24,7 @@ from camera import LatestFrame
 import killswitch
 from controller import ControlConfig, GestureController
 from gestures import analyze
-from mouse import Mouse
+from mouse import Mouse, screen_size
 from one_euro import OneEuro
 
 
@@ -57,6 +57,19 @@ def tune(ctl, k):
     if k == ord("4"): fx.beta = fy.beta = fx.beta * 1.3
 
 
+def debug_line(t, mouse, ctl, res):
+    """Une ligne de diagnostic : état, valeurs internes, écran réel vs écran au démarrage."""
+    lw, lh = screen_size()
+    lm = res.multi_hand_landmarks[0].landmark if res is not None and res.multi_hand_landmarks else None
+    hand = f"mcp5=({lm[5].x:.3f},{lm[5].y:.3f}) mcp9=({lm[9].x:.3f},{lm[9].y:.3f})" if lm else "mains=0"
+    d = " ".join(f"{k}={v:.1f}" if abs(v) >= 10 else f"{k}={v:.3f}" for k, v in ctl.dbg.items())
+    pos = f"({mouse.pos[0]:.1f},{mouse.pos[1]:.1f})" if mouse.pos else "None"
+    tgt = f"({mouse.target[0]:.1f},{mouse.target[1]:.1f})" if mouse.target else "None"
+    return (f"{t:.3f} [{ctl.status}] {hand} {d} pos={pos} target={tgt} drag={int(mouse.dragging)} "
+            f"fist={int(ctl.fist)} scroll={int(ctl.scroll_on)} rebase={int(ctl.need_rebase)} "
+            f"screen={lw:.0f}x{lh:.0f}/{mouse.w:.0f}x{mouse.h:.0f}")
+
+
 def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawTextHelpFormatter)
     p.add_argument("--camera", type=int, default=0)
@@ -82,6 +95,7 @@ def main():
     p.add_argument("--fast", action="store_true", help="modèle MediaPipe léger : moins de latence, un peu moins précis")
     p.add_argument("--dry-run", action="store_true", help="n'envoie aucun événement souris (réglage)")
     p.add_argument("--no-preview", action="store_true")
+    p.add_argument("--debug", action="store_true", help="écrit debug.log (une ligne par image) pour diagnostiquer")
     # calibration.json (produit par calibrate.py) remplace les valeurs par défaut
     cal_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "calibration.json")
     if os.path.exists(cal_path):
@@ -104,6 +118,10 @@ def main():
         min_detection_confidence=0.6, min_tracking_confidence=0.5)
     draw = mp.solutions.drawing_utils
     fps_t, fps_n, fps = time.perf_counter(), 0, 0.0
+    dbg_file = None
+    if a.debug:
+        dbg_file = open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "debug.log"), "w", buffering=1)
+        print(f"Debug : écriture dans debug.log (écran au démarrage {mouse.w:.0f}x{mouse.h:.0f})")
 
     def toggle():
         mouse.set_enabled(not mouse.enabled)
@@ -136,6 +154,9 @@ def main():
                 if not a.no_preview:
                     draw.draw_landmarks(frame, lm_obj, mp.solutions.hands.HAND_CONNECTIONS)
 
+            if dbg_file:
+                dbg_file.write(debug_line(t, mouse, ctl, res if mouse.enabled else None) + "\n")
+
             fps_n += 1
             if t - fps_t >= 1.0:
                 fps, fps_n, fps_t = fps_n / (t - fps_t), 0, t
@@ -150,6 +171,8 @@ def main():
     except KeyboardInterrupt:
         pass
     finally:
+        if dbg_file:
+            dbg_file.close()
         mouse.stop()
         cam.close()
         cv2.destroyAllWindows()

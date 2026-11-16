@@ -48,6 +48,7 @@ class GestureController:
         self.left_pinch = Hysteresis(cfg.pinch_on, cfg.pinch_off)
         self.hist = deque(maxlen=60)                # (t, x, y) positions filtrées récentes
         self.status, self.thumb_dbg = "aucune main", None
+        self.dbg = {}                               # dernières valeurs internes (pour --debug)
         self.hand_present, self.last_seen = False, 0.0
         self.fist = False                           # poing confirmé (pause)
         self.fist_n = self.pinch_n = self.thumb_n = 0
@@ -106,6 +107,7 @@ class GestureController:
         a, m = self.cfg, self.mouse
         self.thumb_dbg = None
         self.hand_present, self.last_seen = True, t
+        self.dbg = {}
 
         # poing : hystérésis + confirmation ; il a priorité sur les clics
         fist_like = s.curl_max < (a.fist_off if self.fist else a.fist_on)
@@ -200,6 +202,8 @@ class GestureController:
         py = min(max(ry + self.off_y, 0), m.h - 1)
         self.off_x, self.off_y = px - rx, py - ry    # contre le bord, le décalage suit : pas de zone morte
         self.hist.append((t, px, py))
+        self.dbg = {"nx": nx, "ny": ny, "rx": rx, "ry": ry, "off_x": self.off_x, "off_y": self.off_y,
+                    "px": px, "py": py}
         # seuil de glissement : tant qu'on pince et qu'on bouge peu, le curseur reste figé
         # (clic précis, pas de sélection de texte accidentelle)
         if m.dragging and not self.drag_started and self.down_pos:
