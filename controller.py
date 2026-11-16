@@ -34,7 +34,8 @@ class ControlConfig:
     thumb_frames: int = 3
     rewind: float = 0.08              # s : on revient à la position d'avant le geste
     lost_after: float = 0.4           # s sans main avant de tout relâcher
-    edge_push: float = 800            # px/s : main au bord de la zone => le curseur rejoint le bord de l'écran
+    edge_gain: float = 3.0            # main qui sort de la zone : le curseur avance edge_gain x plus vite vers le bord
+    edge_noise: float = 0.002         # mouvement (fraction de zone/image) ignoré : bruit de détection
 
     @classmethod
     def from_namespace(cls, ns):
@@ -59,7 +60,7 @@ class GestureController:
         self.down_pos, self.drag_started = None, False
         self.off_x = self.off_y = 0.0               # décalage : le curseur reprend où il était
         self.need_rebase = self.prev_scroll = False
-        self._cursor_t = None
+        self._prev_f = None                         # dernière position filtrée (non bornée) de la main
         self.last_scroll_y, self.scroll_acc, self.scroll_t = None, 0.0, 0.0
         self.scroll_on, self.scroll_miss, self.scroll_open = False, 0, 0
 
@@ -78,6 +79,7 @@ class GestureController:
 
     def _reset_filters(self):
         self.fx.reset(); self.fy.reset()
+        self._prev_f = None
 
     def lose_hand(self):
         self.mouse.release_all()
@@ -196,35 +198,37 @@ class GestureController:
         self.dbg.update({"y": y, "y0": self.last_scroll_y, "d": d, "v": v, "whole": whole,
                          "miss": self.scroll_miss})
 
-    @staticmethod
-    def _bleed(n, pos, off, maxpos, step):
-        """Si la main est au bord (n = 0 ou 1) mais pas le curseur, rapproche celui-ci du bord."""
-        if n >= 1 and pos < maxpos:
-            return off + min(step, maxpos - pos)
-        if n <= 0 and pos > 0:
-            return off - min(step, pos)
+    def _bleed(self, f, delta, pos, off, maxpos, size):
+        """f = position filtrée de la main (0..1 = dans la zone), delta = son mouvement depuis l'image
+        précédente. Rapproche le curseur du bord si la main sort de la zone en s'éloignant."""
+        k = self.cfg.edge_gain * size
+        noise = self.cfg.edge_noise
+        if f >= 1 and delta > noise and pos < maxpos:
+            return off + min((delta - noise) * k, maxpos - pos)
+        if f <= 0 and delta < -noise and pos > 0:
+            return off - min((-delta - noise) * k, pos)
         return off
 
     def _cursor(self, t, s, fist_like, pending, raw_l):
         a, m = self.cfg, self.mouse
         z0x, z0y, z1x, z1y = a.zone
         self.status = "CURSEUR"
-        nx = (s.anchor[0] - z0x) / (z1x - z0x)
-        ny = (s.anchor[1] - z0y) / (z1y - z0y)
-        nx, ny = min(max(nx, 0), 1), min(max(ny, 0), 1)
-        rx, ry = self.fx(nx, t) * m.w, self.fy(ny, t) * m.h
+        # position filtrée NON bornée : sert à voir si la main sort de la zone (nx/ny bornés ensuite)
+        fnx = self.fx((s.anchor[0] - z0x) / (z1x - z0x), t)
+        fny = self.fy((s.anchor[1] - z0y) / (z1y - z0y), t)
+        nx, ny = min(max(fnx, 0), 1), min(max(fny, 0), 1)
+        rx, ry = nx * m.w, ny * m.h
         if self.need_rebase and m.pos:               # le curseur reste où il est, la main repart d'ici
             self.off_x, self.off_y = m.pos[0] - rx, m.pos[1] - ry
             self.need_rebase = False
             self.hist.clear()
-        # Main au bord de la zone : le décalage laissé par une pause pourrait empêcher d'atteindre
-        # le bord de l'écran (le curseur resterait bloqué à mi-hauteur). On le résorbe doucement.
-        dt = min(t - self._cursor_t, 0.1) if self._cursor_t is not None else 0.0
-        self._cursor_t = t
-        step = a.edge_push * dt
-        if step:
-            self.off_x = self._bleed(nx, rx + self.off_x, self.off_x, m.w - 1, step)
-            self.off_y = self._bleed(ny, ry + self.off_y, self.off_y, m.h - 1, step)
+        # Main qui SORT de la zone : le décalage laissé par une pause pourrait empêcher d'atteindre
+        # le bord de l'écran (curseur bloqué à mi-hauteur). On le résorbe, mais seulement en
+        # proportion du mouvement vers l'extérieur : une main immobile ne fait pas glisser le curseur.
+        if self._prev_f is not None:
+            self.off_x = self._bleed(fnx, fnx - self._prev_f[0], rx + self.off_x, self.off_x, m.w - 1, m.w)
+            self.off_y = self._bleed(fny, fny - self._prev_f[1], ry + self.off_y, self.off_y, m.h - 1, m.h)
+        self._prev_f = (fnx, fny)
         px = min(max(rx + self.off_x, 0), m.w - 1)
         py = min(max(ry + self.off_y, 0), m.h - 1)
         self.off_x, self.off_y = px - rx, py - ry    # contre le bord, le décalage suit : pas de zone morte

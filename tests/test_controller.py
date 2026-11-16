@@ -90,18 +90,28 @@ class TestCursorAndClick(Base):
 
 
 class TestEdgeBleed(Base):
-    def test_cursor_reaches_bottom_after_offset(self):
-        """Régression (debug.log) : décalage vertical après une pause + main au bas de la zone."""
-        self.feed(OPEN, 3)
-        self.c.off_y = -500                       # curseur bloqué à mi-hauteur
-        low = state(anchor=(0.5, 0.9))            # sous la zone (y > 0.80) => ny = 1
-        self.feed(low, 90)
+    def test_cursor_reaches_bottom_when_hand_pushes_out(self):
+        """Régression (debug.log) : décalage vertical après une pause => curseur bloqué à mi-hauteur."""
+        self.feed(state(anchor=(0.5, 0.75)), 3)
+        self.c.off_y = -500
+        for i in range(60):                       # la main descend de 0.75 à 0.99 (sort de la zone en bas)
+            self.feed(state(anchor=(0.5, 0.75 + 0.004 * (i + 1))), 1)
         self.assertGreater(self.m.pos[1], self.m.h - 5)
 
-    def test_cursor_unchanged_inside_zone(self):
+    def test_stationary_hand_at_edge_does_not_drift(self):
+        """Régression : main immobile au bas de la zone (ex. avant un scroll) => le curseur ne bouge pas."""
+        low = state(anchor=(0.5, 0.9))            # sous la zone (y > 0.80)
+        self.feed(low, 10)
+        self.c.off_y = -500
+        self.feed(low, 1)                         # prend en compte le décalage
+        before = self.m.pos[1]
+        self.feed(low, 90)
+        self.assertAlmostEqual(self.m.pos[1], before, delta=1)
+
+    def test_offset_kept_inside_zone(self):
         self.feed(OPEN, 3)
         self.c.off_y = -100
-        self.feed(OPEN, 30)                       # main au centre : le décalage est conservé
+        self.feed(OPEN, 30)
         self.assertAlmostEqual(self.c.off_y, -100, places=3)
 
 
