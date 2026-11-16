@@ -131,8 +131,18 @@ class TestScroll(Base):
         self.feed(state(anchor=(0.5, 0.7), open_hand=False, two=True), 10)
         scrolls = [c[1] for c in self.m.calls if isinstance(c, tuple)]
         self.assertTrue(scrolls and all(n > 0 for n in scrolls))
-        self.feed(OPEN, 10)                                            # > tolérance : sortie
+        self.feed(OPEN, 25)                                            # main ouverte tenue : sortie
         self.assertEqual(self.c.status, "CURSEUR")
+
+
+    def test_scroll_up_survives_fingers_unfolding(self):
+        """Régression (debug.log) : annulaire/auriculaire se dépliant en remontant coupaient le scroll."""
+        self.feed(OPEN, 3)
+        self.feed(replace(TWO, anchor=(0.5, 0.7)), 2)
+        for i in range(12):                                            # main ouverte + monte lentement
+            self.feed(replace(OPEN, anchor=(0.5, 0.7 - 0.01 * (i + 1))), 1)
+        self.assertEqual(self.c.status, "SCROLL")
+        self.assertTrue(any(isinstance(c, tuple) and c[1] < 0 for c in self.m.calls))
 
 
 class TestHandLoss(Base):

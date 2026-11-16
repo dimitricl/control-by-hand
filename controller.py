@@ -26,6 +26,7 @@ class ControlConfig:
     scroll_dead: float = 0.03
     scroll_max: float = 3500          # px/s
     scroll_miss_max: int = 8          # images de tolérance (~250 ms) avant de quitter le scroll
+    scroll_open_frames: int = 20      # main ouverte (annulaire+auriculaire dépliés) tenue ~0,6 s => fin du scroll
     fist_on: float = 1.35
     fist_off: float = 1.65
     fist_frames: int = 4              # images consécutives pour confirmer chaque geste
@@ -60,7 +61,7 @@ class GestureController:
         self.need_rebase = self.prev_scroll = False
         self._cursor_t = None
         self.last_scroll_y, self.scroll_acc, self.scroll_t = None, 0.0, 0.0
-        self.scroll_on, self.scroll_miss = False, 0
+        self.scroll_on, self.scroll_miss, self.scroll_open = False, 0, 0
 
     # --- utilitaires ---
     def _past(self, t, dt):
@@ -139,10 +140,14 @@ class GestureController:
         if self.fist:
             self.scroll_on = False
         elif self.scroll_on:
-            self.scroll_miss = 0 if (s.index_ext and s.middle_ext and not s.open_hand) else self.scroll_miss + 1
-            self.scroll_on = self.scroll_miss <= a.scroll_miss_max
+            # on reste tant que index et majeur sont tendus ; annulaire/auriculaire qui se déplient
+            # pendant le mouvement (fréquent en remontant) ne coupent le scroll que s'ils restent
+            # dépliés assez longtemps (= l'utilisateur ouvre la main pour reprendre le curseur)
+            self.scroll_miss = 0 if (s.index_ext and s.middle_ext) else self.scroll_miss + 1
+            self.scroll_open = self.scroll_open + 1 if s.open_hand else 0
+            self.scroll_on = self.scroll_miss <= a.scroll_miss_max and self.scroll_open < a.scroll_open_frames
         elif s.two_fingers and not raw_l:
-            self.scroll_on, self.scroll_miss = True, 0
+            self.scroll_on, self.scroll_miss, self.scroll_open = True, 0, 0
         if not self.scroll_on:
             self.last_scroll_y = None
         if self.prev_scroll and not self.scroll_on:
